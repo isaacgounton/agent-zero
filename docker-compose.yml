@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  agent-zero:
+    image: agent0ai/agent-zero:latest
+    container_name: agent-zero-app
+    restart: unless-stopped
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    user: "1000:1000"  # Run as non-root user
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    
+    # Environment variables
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      # Add your environment variables here
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - GROQ_API_KEY=${GROQ_API_KEY}
+    
+    # Ports - Coolify will handle external routing
+    ports:
+      - "3000:80"
+    
+    # Volumes for data persistence
+    volumes:
+      - agent_zero_data:/a0
+      - agent_zero_memory:/a0/memory
+      - agent_zero_knowledge:/a0/knowledge
+      - agent_zero_workdir:/a0/work_dir
+      - agent_zero_tmp:/a0/tmp
+      # Separate config and logs for better security
+      - ./config:/a0/config:ro  # Read-only config
+      - agent_zero_logs:/var/log/agent-zero
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    
+    # Network security
+    networks:
+      - agent-zero-network
+    
+    # Disable specific capabilities for security
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+
+  # Optional: Redis for caching/session management
+  redis:
+    image: redis:7-alpine
+    container_name: agent-zero-redis
+    restart: unless-stopped
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    user: "999:999"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # Redis configuration
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 256mb 
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    
+    volumes:
+      - redis_data:/data
+      - /tmp:/tmp
+    
+    networks:
+      - agent-zero-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+# Named volumes for better data management
+volumes:
+  agent_zero_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/agent-zero/data
+      o: bind
+  
+  agent_zero_memory:
+    driver: local
+  
+  agent_zero_knowledge:
+    driver: local
+  
+  agent_zero_workdir:
+    driver: local
+  
+  agent_zero_tmp:
+    driver: local
+  
+  agent_zero_logs:
+    driver: local
+  
+  redis_data:
+    driver: local
+
+# Isolated network
+networks:
+  agent-zero-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
