@@ -10,7 +10,6 @@ services:
     security_opt:
       - no-new-privileges:true
     read_only: false
-    user: "1000:1000"  # Run as non-root user
     
     # Resource limits
     deploy:
@@ -24,8 +23,6 @@ services:
     
     # Environment variables
     environment:
-      - PUID=1000
-      - PGID=1000
       - TZ=UTC
       # Add your environment variables here
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
